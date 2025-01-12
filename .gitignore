@@ -1,0 +1,3 @@
+*.iss
+new_updates.txt
+__pycache__/

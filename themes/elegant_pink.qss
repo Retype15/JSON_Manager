@@ -1,0 +1,139 @@
+/* purple_pink_elegant_professional.qss */
+QMainWindow {
+    background-color: #f8e8ee; /* Light pink background */
+    color: #51284f; /* Dark purple text */
+}
+
+QMenuBar {
+    background-color: #e6ccde; /* Lighter purple */
+    color: #51284f;
+    border-bottom: 1px solid #d2a8bf;
+}
+
+QMenuBar::item {
+    background-color: transparent;
+    padding: 8px 12px;
+}
+
+QMenuBar::item:selected {
+    background-color: #d2a8bf;
+}
+
+QMenu {
+    background-color: #e6ccde;
+    color: #51284f;
+    border: 1px solid #d2a8bf;
+}
+
+QMenu::item {
+    background-color: transparent;
+    padding: 8px 20px;
+}
+
+QMenu::item:selected {
+    background-color: #d2a8bf;
+}
+
+QTabWidget::pane { /* The tab widget frame */
+    border-top: 2px solid #d2a8bf;
+    background-color: #f0c2d7; /* Medium pink */
+}
+
+QTabWidget::tab-bar {
+    left: 5px; /* move to the right by 5px */
+}
+
+QTabBar::tab {
+    background-color: #f0c2d7;
+    color: #51284f;
+    border: 1px solid #d2a8bf;
+    border-bottom-color: transparent; /* same as the pane color */
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    min-width: 8ex;
+    padding: 8px 20px;
+}
+
+QTabBar::tab:selected, QTabBar::tab:hover {
+    background-color: #f8e8ee;
+}
+
+QTabBar::tab:selected {
+    border-bottom-color: #f8e8ee; /* same as pane color */
+}
+
+QPushButton {
+    background-color: #e6ccde;
+    color: #51284f;
+    border: 1px solid #d2a8bf;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+
+QPushButton:hover {
+    background-color: #d2a8bf;
+}
+
+QPushButton:pressed {
+    background-color: #c6a3b5;
+}
+
+QLineEdit, QTextEdit {
+    background-color: #f5d0e1; /* Lighter pink for inputs */
+    color: #51284f;
+    border: 1px solid #d2a8bf;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+QProgressBar {
+    border: 2px solid #d2a8bf;
+    border-radius: 5px;
+    text-align: center;
+    background-color: #e6ccde;
+    color: #51284f;
+}
+
+QProgressBar::chunk {
+    background-color: #cbaacb; /* Lavender */
+    width: 10px;
+    margin: 0.5px;
+}
+
+QStatusBar {
+    background-color: #e6ccde;
+    color: #51284f;
+    border-top: 1px solid #d2a8bf;
+}
+
+QListView, QTreeView {
+    background-color: #f5d0e1;
+    color: #51284f;
+    border: 1px solid #d2a8bf;
+    border-radius: 4px;
+}
+
+QListView::item:selected, QTreeView::item:selected {
+    background-color: #d2a8bf;
+    color: #51284f;
+}
+
+QScrollBar:vertical {
+    background: #f0c2d7;
+    width: 10px;
+    margin: 0px 0px 0px 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #d2a8bf;
+    min-height: 20px;
+    border-radius: 4px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    background: none;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}

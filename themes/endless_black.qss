@@ -1,0 +1,67 @@
+/* General */
+QWidget {
+    background-color: #2b2b2b; /* Fondo oscuro */
+    font-size: 14px;           /* Tamaño de fuente */
+    color: #ffffff;            /* Color de texto */
+}
+
+/* QTabWidget */
+QTabWidget::pane {
+    border: 0px; /* Borde de las pestañas */
+}
+
+QTabBar::tab {
+    background: #3a3a3a;       /* Color de fondo de las pestañas */
+    border: 2px solid #3a3a3a; /* Borde de las pestañas */
+    padding: 5px 15px;         /* Padding horizontal adicional */
+    margin: 2px;
+    /*min-height: 20px;           Altura mínima para las pestañas no seleccionadas */
+}
+
+QTabBar::tab:selected {
+    background: #555555;       /* Color de fondo de la pestaña seleccionada */
+    padding: 5px 15px;         /* Padding horizontal adicional */
+    margin-top: -5px;          /* Ajustar la pestaña seleccionada hacia arriba */
+   /* min-height: 35px;           Altura mínima para la pestaña seleccionada */
+}
+
+/* QPushButton */
+QPushButton {
+    background-color: #5a5a5a; /* Color de fondo */
+    color: white;              /* Color de texto */
+    border: 1px solid #3a3a3a; /* Borde */
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    font-size: 14px;
+    border-radius: 5px;        /* Bordes redondeados */
+}
+
+QPushButton:hover {
+    background-color: #6d6d6d; /* Color de fondo al pasar el ratón */
+}
+
+/* QLineEdit */
+QLineEdit {
+    padding: 5px;
+    border: 1px solid #3a3a3a; /* Borde */
+    border-radius: 3px;        /* Bordes redondeados */
+    background-color: #3a3a3a; /* Fondo */
+    color: white;              /* Color de texto */
+}
+
+/* QTextEdit */
+QTextEdit {
+    padding: 5px;
+    border: 1px solid #3a3a3a; /* Borde */
+    border-radius: 3px;        /* Bordes redondeados */
+    background-color: #3a3a3a; /* Fondo */
+    color: white;              /* Color de texto */
+}
+
+/* QStatusBar */
+QStatusBar {
+    background: #3a3a3a;       /* Color de fondo */
+    border-top: 1px solid #3a3a3a; /* Borde superior */
+}
+	
