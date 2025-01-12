@@ -8,11 +8,14 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QFileDial
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 import defs.utils as utils
 import defs.saver as saver
+import inspect
+import argparse
 
 class QTextEditLogger(logging.Handler):
-    def __init__(self, widget):
+    def __init__(self, widget, log_level):
         super().__init__()
         self.widget = widget
+        self.setLevel(log_level)
 
     def emit(self, record):
         msg = self.format(record)
@@ -118,9 +121,10 @@ class Worker(QThread):
         return self.model.query([f"\'json_objetive\': {self.json_objetive}\n\'text_to_extract\': {text}", *images])
     
 class MainW(QMainWindow):
-    def __init__(self):
+    def __init__(self, ui_log_level):
         super().__init__()
         uic.loadUi('src/ui/main_editor.ui', self)
+        self.ui_log_level = ui_log_level
         
         self.load_themes_combobox()  # Cargar los temas en el combobox primero
         self.dataSave = saver.load_config()
@@ -161,7 +165,7 @@ class MainW(QMainWindow):
         self.json_highlighter_objective = utils.JsonHighlighter(self.jsonObjetiveText.document())
         
         original_text_edit = self.findChild(QTextEdit, 'logTextEdit')
-        self.log_text_box = QTextEditLogger(original_text_edit)
+        self.log_text_box = QTextEditLogger(original_text_edit, ui_log_level)
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
         
@@ -230,34 +234,68 @@ class MainW(QMainWindow):
             self.tabInfoToExtract.removeTab(index)
     
     def add_tab_with_files(self):
-        options = QFileDialog.Options()
-        options |= QFileDialog.ReadOnly
+        """Allows the user to select multiple files or directories and processes them."""
         file_dialog = QFileDialog()
-        file_dialog.setFileMode(QFileDialog.ExistingFiles)
-        file_dialog.setOption(QFileDialog.DontUseNativeDialog, True)
-        file_dialog.setNameFilters(["Text files (*.txt *.json *.xml *.csv)", "All files (*.*)"])
-        file_dialog.setViewMode(QFileDialog.Detail)
+        file_dialog.setFileMode(QFileDialog.ExistingFiles)  # Allows selecting multiple existing files
+
+        # Filters for files and directories
+        filters = "Supported Files (*.txt *.json *.xml *.csv);;Text files (*.txt);;JSON files (*.json);;XML files (*.xml);;CSV files (*.csv);;All files (*)"
+        file_dialog.setNameFilter(filters)
+
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
 
         if file_dialog.exec_():
-            selected_files = file_dialog.selectedFiles()
-
-            for file_or_dir in selected_files:
-                if os.path.isdir(file_or_dir):
-                    for root, _, files in os.walk(file_or_dir):
-                        for file_name in files:
-                            file_path = os.path.join(root, file_name)
-                            if file_name.endswith(('.txt', '.json', '.xml', '.csv')):
-                                with open(file_path, 'r', encoding='utf-8') as file:
-                                    file_content = file.read()
-                                    print(file_content)
-                                    tab = utils.QInfoToExtract(self, file_name, file_content)
-                                    self.tabInfoToExtract.addTab(tab, file_name)
-                else:
-                    if file_or_dir.endswith(('.txt', '.json', '.xml', '.csv')):
-                        with open(file_or_dir, 'r', encoding='utf-8') as file:
-                            file_content = file.read()
-                            tab = utils.QInfoToExtract(self, os.path.basename(file_or_dir), file_content)
-                            self.tabInfoToExtract.addTab(tab, f"{os.path.basename(file_or_dir)}")       
+            selected_items = file_dialog.selectedFiles()
+            #final_names = [os.path.basename(path) for path in selected_items]
+            #formatted_items = "\n<br>".join(f"-- {name}" for name in final_names)
+            #self.logger.debug(f"User selected the following items: \n<br>{formatted_items}")
+            status_files = {'sucess': [],'error': []}
+            for item_path in selected_items:
+                if os.path.isfile(item_path):
+                    name, status = self.process_file(item_path)
+                    status_files[status].append(name)
+                elif os.path.isdir(item_path):
+                    name, status = self.process_directory(item_path)
+                    status_files[status].append(name)
+            
+            formatted_items_sucess = "\n<br>".join(f"-- {name}" for name in status_files['sucess'])
+            formatted_items_errors = "\n<br>".join(f"-- {name}" for name in status_files['error'])
+            
+            if formatted_items_sucess: self.logger.info(f"Sucess loaded: \n<br>{formatted_items_sucess}")
+            if formatted_items_errors: self.logger.info(f"Has errors: \n<br>{formatted_items_errors}")
+            
+            
+    def process_file(self, file_path):
+        """Processes an individual file."""
+        file_name = os.path.basename(file_path)
+        name = os.path.basename(file_path)
+        status = 'sucess'
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                file_content = f.read()
+            #print(file_content)
+            tab = utils.QInfoToExtract(self, file_name, file_content)
+            self.tabInfoToExtract.addTab(tab, file_name)
+            #self.logger.info(f"Sucess: --{file_path}\n<br>")
+            status = 'sucess'
+            self.statusbar.showMessage(f"Processed file: {file_name}", 5000)  # Show message for 5 seconds
+        except Exception as e:
+            error_message = f"Could not read file '{file_name}'. Error: {e}"
+            self.logger.error(error_message)
+            status = 'error'
+            self.statusbar.showMessage(error_message, 10000)  # Show error message for 10 seconds
+        return name, status
+        
+        
+    def process_directory(self, dir_path):
+        """Processes all valid files within a directory."""
+        self.logger.info(f"Processing directory: {dir_path}")
+        for filename in os.listdir(dir_path):
+            file_path = os.path.join(dir_path, filename)
+            if os.path.isfile(file_path) and filename.lower().endswith(('.txt', '.json', '.xml', '.csv')):
+                self.process_file(file_path)
+        self.logger.info(f"Finished processing directory: {dir_path}")
     
     def add_new_tab(self):
         tab = utils.QInfoToExtract(self)
@@ -380,8 +418,8 @@ class MainW(QMainWindow):
             tab.setEnabled(True)
             tab.widgetResponse.setVisible(True)
             tab.textResponse.setText(response)
-            self.statusbar.showMessage(f"\'{tab_name}\' Tab has been processed.")
-            self.logger.info(f"\'{tab_name}\' Tab has been processed.")
+            self.statusbar.showMessage(f"\'{tab_name}\' has been processed.")
+            self.logger.info(f"\'{tab_name}\' has been processed.")
             self.progress_bar_no_error()
         elif error_code == -1:
             print(f"The user has stopped a rest of the process.")
@@ -430,6 +468,7 @@ class MainW(QMainWindow):
         self.dataSave['theme'] = self.comboBoxThemes.currentText()
         self.dataSave['json_objetive'] = self.jsonObjetiveText.toPlainText()
         saver.save_config(self.dataSave)
+        self.logger.debug("Data saved sucessfully.")
     
     def loadConfig(self):
         try:
@@ -439,24 +478,34 @@ class MainW(QMainWindow):
             self.rightHideButton.setText(">>>" if self.dataSave['right_hide_panel'] else "<<<")
             self.rightPanel.setVisible(self.dataSave['right_hide_panel'])
             self.jsonObjetiveText.setText(self.dataSave['json_objetive'])
+            self.logger.debug("DataLoad loaded sucessfully.")
         except Exception as e:
             self.statusbar.showMessage(str(e))
+            self.logger.error(f"DataLoad has a error: {e}")
             print(e)
 
     def method_handler(self, method, value=None):
         return method(value)
 
     def closeEvent(self, event):
-        reply = QMessageBox.question(self, 'Confirmar Salida', "¿Estás seguro de que quieres salir?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        reply = QMessageBox.question(self, 'Confirm Exit', "Are you sure you want to exit?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
             self.saveConfig()
+            self.logger.debug("Closed Sucessfully.")
             event.accept() # Cierra la ventana
-        else: 
+        else:
+            self.logger.debug("Cancelled.")
             event.ignore() # Ignora el evento de cierre
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    args = parser.parse_args()
+    
+    ui_log_level = logging.DEBUG if args.debug else logging.INFO
+    
     app = QApplication(sys.argv)
-    mainw = MainW()
+    mainw = MainW(ui_log_level)
     mainw.show()
     print(f"Program id=\'{id(app)}\' launched.")
     
