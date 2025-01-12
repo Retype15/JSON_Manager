@@ -1,3 +1,5 @@
+__pycache__/
+.venv/
 *.iss
 new_updates.txt
-__pycache__/
+*.log

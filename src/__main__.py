@@ -1,12 +1,42 @@
 import sys
 import json
+import logging
 import os
 from PyQt5 import uic
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QFileDialog, QMessageBox, QInputDialog
+from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QFileDialog, QMessageBox, QInputDialog, QTextEdit
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 import defs.utils as utils
 import defs.saver as saver
 
+class QTextEditLogger(logging.Handler):
+    def __init__(self, widget):
+        super().__init__()
+        self.widget = widget
+
+    def emit(self, record):
+        msg = self.format(record)
+
+        # Aplicar color según el nivel del log
+        if record.levelno == logging.DEBUG:
+            color = 'gray'
+        elif record.levelno == logging.INFO:
+            color = 'green'
+        elif record.levelno == logging.WARNING:
+            color = 'orange'
+        elif record.levelno == logging.ERROR:
+            color = 'red'
+        elif record.levelno == logging.CRITICAL:
+            color = 'darkred'
+        else:
+            color = 'black'
+        # Añadir el mensaje coloreado y agrupar las líneas del mismo log con un contenedor visible
+        self.widget.append(f'''
+            <div style="border: 2px solid lightgray; border-radius: 10px; margin: 5px 0; padding: 10px;">
+                <p style="color:{color}; margin: 0;">{msg}</p>
+            </div>
+        ''')
+        
 class Worker(QThread):
     update = pyqtSignal(int, str, int)
     invoker = pyqtSignal(object, object)
@@ -36,6 +66,7 @@ class Worker(QThread):
                         tab = self.parent.tabInfoToExtract.widget(i)
                         tab_name = self.parent.tabInfoToExtract.tabText(i)
                         invoker(self.parent.statusbar.showMessage,f"Processing tab \'{tab_name}\'. Thile a moment...")
+                        #self.parent.logger.info(f"Processing tab \'{tab_name}\'.")
                         text = tab.textInfoToObject.toPlainText()
                         invoker(tab.textResponse.setText, '')
                         invoker(tab.widgetResponse.setVisible, False)
@@ -52,18 +83,24 @@ class Worker(QThread):
                         print(f"Actual Tokens of '{tab_name}': {tokens}")
                         
                         self.update.emit(i, utils.delete_lines(response),0)
+                    
                     except Exception as e:
-                        print(f"An error ocurred. {e}")
-                        self.update.emit(i, f"An error ocurred. {e}", -404)
+                        if str(e).startswith('403'):
+                            print("Error 403: Acceso prohibido en su pais")
+                            self.update.emit(i, "Error 403: Access prohibited on your conuntry.", -403)
+                            break
+                        else:
+                            print(f"An error ocurred. {e}")
+                            self.update.emit(i, f"An error ocurred. {e}", -404)
                 else:
                     invoker(self.parent.buttonStartProcess.setText, "Start Process")
                     invoker(self.parent.buttonStartProcess.setEnabled, False)
                     self.update.emit(i,"Has been stopped by the user.",-1)
             print("All Task Completed.")
-            invoker(self.parent.statusbar.showMessage, "All Task Completed.")
+            #invoker(self.parent.statusbar.showMessage, "All Task Completed.")
         except Exception as e:
             print(e)
-            invoker(self.parent.statusbar.showMessage, "All Task has fault.")
+            #invoker(self.parent.statusbar.showMessage, "All Task has fault.")
         self.stop()
         invoker(self.parent.buttonStartProcess.setEnabled, True)
         invoker(self.parent.buttonStartProcess.setText, "Start Process")
@@ -122,8 +159,25 @@ class MainW(QMainWindow):
         
         self.tabInfoToExtract.tabCloseRequested.connect(self.close_tabInfoToExtract)
         self.json_highlighter_objective = utils.JsonHighlighter(self.jsonObjetiveText.document())
-        pass
-   
+        
+        original_text_edit = self.findChild(QTextEdit, 'logTextEdit')
+        self.log_text_box = QTextEditLogger(original_text_edit)
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
+        
+        ui_handler = self.log_text_box
+        ui_formatter = logging.Formatter('%(levelname)s - %(message)s')
+        ui_handler.setFormatter(ui_formatter)
+        logger.addHandler(ui_handler)
+        
+        file_handler = logging.FileHandler('app.log')
+        file_formatter = logging.Formatter('%(asctime)s - %(funcName)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
+        
+        self.logger = logger
+        self.logger.info("Programa iniciado correctamente...")
+        
     def setConectors(self):
         self.leftHideButton.clicked.connect(self.leftHideButtonHandler)
         self.rightHideButton.clicked.connect(self.rightHideButtonHandler)
@@ -219,18 +273,28 @@ class MainW(QMainWindow):
         self.rightHideButton.setText(">>>" if self.rightPanel.isVisible() else "<<<")
         
     def buttonStartProcessHandler(self):
+        self.progress_bar_no_error()
         widgets_count = self.tabInfoToExtract.count()
         if widgets_count == 0:
             self.statusbar.showMessage("Clear list, impossible to process anything.")
             return
         self.statusbar.showMessage("Checking for internet...")
+        self.logger.debug("Checking for internet...")
         if not utils.check_internet():
             self.statusbar.showMessage("You dont have internet access... Enchance your conection and try again...")
+            self.logger.warning("No internet access.")
             return
         api_key = self.dataSave['api_key']
         self.statusbar.showMessage("Starting the model... Please Wait...")
-        if api_key and not hasattr(self, 'model'):
+        if 'defs.ai' not in sys.modules or not hasattr(sys.modules['defs.ai'], 'geminiClass'):
+            print('Importing gemini data model... Wait a few seconds')
+            self.logger.debug("Importing geminiClass")
+            global geminiClass
             from defs.ai import geminiClass
+        else:
+            geminiClass = sys.modules['defs.ai'].geminiClass
+        
+        if api_key and not hasattr(self, 'model'):
             self.model = geminiClass(api_key)
         elif not api_key:
             self.statusbar.showMessage("You may need a valid api key to use the model.")
@@ -248,11 +312,19 @@ class MainW(QMainWindow):
         else:
             self.buttonStartProcess.setEnabled(False)
             self.worker.stop()
+            self.progress_bar_has_warning()
             #self.worker.wait()  # Esperar a que el subproceso termine completamente
             #self.buttonStartProcess.setEnabled(True)
 
     
     def buttonReloadModelHandler(self):
+        if 'defs.ai' not in sys.modules or not hasattr(sys.modules['defs.ai'], 'geminiClass'):
+            print('Importing gemini data model... Wait a few seconds')
+            self.logger.debug("Importing geminiClass")
+            global geminiClass
+            from defs.ai import geminiClass
+        else:
+            geminiClass = sys.modules['defs.ai'].geminiClass
         self.model = geminiClass(self.dataSave['api_key'])
         self.worker = Worker(self)
         self.all_ready()
@@ -309,16 +381,45 @@ class MainW(QMainWindow):
             tab.widgetResponse.setVisible(True)
             tab.textResponse.setText(response)
             self.statusbar.showMessage(f"\'{tab_name}\' Tab has been processed.")
+            self.logger.info(f"\'{tab_name}\' Tab has been processed.")
+            self.progress_bar_no_error()
         elif error_code == -1:
             print(f"The user has stopped a rest of the process.")
             self.statusbar.showMessage(f"The user has stopped a rest of the process.")
+            self.logger.warning(f"The user has stopped a rest of the process.")
+            self.progress_bar_has_warning("Stopped...")
+        elif error_code == -403:
+            self.statusbar.showMessage(response)
+            self.logger.error(response)
+            self.progress_bar_has_error()
         elif error_code < 0:
             tab_name = self.tabInfoToExtract.tabText(i)
             print(f"an error ocurred on the tab \'{tab_name}\'")
             self.statusbar.showMessage(f"an error ocurred on the tab \'{tab_name}\'")
+            self.logger.error(f"an error ocurred on the tab \'{tab_name}: {response}\'")
+            self.progress_bar_has_error()
         self.textResponse.setText(response)
         self.progressBarTotal.setValue(self.progressBarTotal.value() + 1)
-        
+    
+    def progress_bar_no_error(self, msg="%p%"):
+        self.progressBarTotal.setFormat(msg)
+        self.progressBarTotal.setStyleSheet("")        
+
+    def progress_bar_has_warning(self, msg="%p%"):
+        self.progressBarTotal.setFormat(msg)
+        self.progressBarTotal.setStyleSheet("""
+            QProgressBar::chunk {
+                background-color: yellow;
+            }
+        """)    
+    def progress_bar_has_error(self, msg="¡Error! %p%"):
+        self.progressBarTotal.setFormat(msg)
+        self.progressBarTotal.setStyleSheet("""
+            QProgressBar::chunk {
+                background-color: red;
+            }
+        """)
+
     def hideWidget(self, widget):
         widget.setVisible(not widget.isVisible())
         
@@ -358,4 +459,6 @@ if __name__ == '__main__':
     mainw = MainW()
     mainw.show()
     print(f"Program id=\'{id(app)}\' launched.")
+    
     sys.exit(app.exec_())
+    
