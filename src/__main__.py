@@ -121,6 +121,7 @@ class MainW(QMainWindow):
         self.buttonAddTabInfo.setMenu(self.menuAddTabButton)
         
         self.tabInfoToExtract.tabCloseRequested.connect(self.close_tabInfoToExtract)
+        self.json_highlighter_objective = utils.JsonHighlighter(self.jsonObjetiveText.document())
         pass
    
     def setConectors(self):
@@ -220,16 +221,15 @@ class MainW(QMainWindow):
     def buttonStartProcessHandler(self):
         widgets_count = self.tabInfoToExtract.count()
         if widgets_count == 0:
-            self.statusbar.showMessage("Lista vacia, imposible procesar nada.")
+            self.statusbar.showMessage("Clear list, impossible to process anything.")
             return
         self.statusbar.showMessage("Checking for internet...")
         if not utils.check_internet():
-            self.statusbar.showMessage("You dont have access to internet... Enchance your conection...")
+            self.statusbar.showMessage("You dont have internet access... Enchance your conection and try again...")
             return
-        self.statusbar.showMessage('All OK.')
         api_key = self.dataSave['api_key']
+        self.statusbar.showMessage("Starting the model... Please Wait...")
         if api_key and not hasattr(self, 'model'):
-            self.statusbar.showMessage("Starting the model... Please Wait...")
             from defs.ai import geminiClass
             self.model = geminiClass(api_key)
         elif not api_key:
