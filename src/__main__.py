@@ -77,15 +77,22 @@ class Worker(QThread):
                         
                         images = [tab.image_list.item(i).data(Qt.UserRole) for i in range(tab.image_list.count())]
                         model_response = self.send_query(text, images)
-                        response = model_response.text
-                        tokens = self.to_int(self.model.model.count_tokens(response))
-                        while tokens >=8190:
+                        response = utils.delete_lines(model_response.text)
+                        tokens = self.to_int(self.model.model.count_tokens(model_response.text))
+                        total_tokens = tokens
+                        while tokens >= 8000:
+                            invoker(self.parent.logger.debug, f"--EXTRA PROCESS ON {tab_name}--")
+                            print(f"--EXTRA PROCESS ON {tab_name}--")
                             model_response = self.model.query("If you response doesn\'t completed, continue writing the JSON file exactly from where you left off, else only response \"NONE\".")
-                            response += model_response.text
-                        tokens = self.to_int(self.model.model.count_tokens(response))
-                        print(f"Actual Tokens of '{tab_name}': {tokens}")
+                            if model_response.text == "NONE":
+                                break                        
+                            response += utils.delete_lines(model_response.text)
+                            tokens = self.to_int(self.model.model.count_tokens(model_response.text))
+                            total_tokens += tokens
+                        print(f"Actual Tokens of '{tab_name}': {total_tokens}")
+                        invoker(self.parent.logger.debug, f"Actual Tokens of '{tab_name}': {total_tokens}")
                         
-                        self.update.emit(i, utils.delete_lines(response),0)
+                        self.update.emit(i, response,0)
                     
                     except Exception as e:
                         if str(e).startswith('403'):
@@ -162,6 +169,7 @@ class MainW(QMainWindow):
         self.buttonAddTabInfo.setMenu(self.menuAddTabButton)
         
         self.tabInfoToExtract.tabCloseRequested.connect(self.close_tabInfoToExtract)
+        self.tabInfoToExtract.parent = self
         self.json_highlighter_objective = utils.JsonHighlighter(self.jsonObjetiveText.document())
         
         original_text_edit = self.findChild(QTextEdit, 'logTextEdit')
@@ -194,6 +202,8 @@ class MainW(QMainWindow):
         self.lineEditApiKey.editingFinished.connect(self.saveConfig)
         
         self.comboBoxThemes.currentIndexChanged.connect(self.apply_selected_theme)
+        
+        self.buttonDeleteAllTabs.clicked.connect(self.remove_all_tabs)
 
     def edit_tab_title(self, index):
         if index != -1:
@@ -201,6 +211,11 @@ class MainW(QMainWindow):
             new_text, ok = QInputDialog.getText(self, "Edit Tab Title", "Enter new title:", text=current_text)
             if ok:
                 self.tabInfoToExtract.setTabText(index, new_text)
+    
+    def remove_all_tabs(self):
+        while self.tabInfoToExtract.count() > 0:
+            self.tabInfoToExtract.removeTab(0)
+        self.logger.debug("All tabs deleted.")
 
     def load_themes_combobox(self):
         self.comboBoxThemes.clear()
@@ -262,8 +277,8 @@ class MainW(QMainWindow):
             formatted_items_sucess = "\n<br>".join(f"-- {name}" for name in status_files['sucess'])
             formatted_items_errors = "\n<br>".join(f"-- {name}" for name in status_files['error'])
             
-            if formatted_items_sucess: self.logger.info(f"Sucess loaded: \n<br>{formatted_items_sucess}")
-            if formatted_items_errors: self.logger.info(f"Has errors: \n<br>{formatted_items_errors}")
+            if formatted_items_sucess: self.logger.info(f"Sucess loaded: \n<br>{formatted_items_sucess}\n<br> -Total: {len(status_files['sucess'])}")
+            if formatted_items_errors: self.logger.info(f"Has errors: \n<br>{formatted_items_errors}\n<br> -Total: {len(status_files['error'])}")
             
             
     def process_file(self, file_path):
@@ -311,7 +326,6 @@ class MainW(QMainWindow):
         self.rightHideButton.setText(">>>" if self.rightPanel.isVisible() else "<<<")
         
     def buttonStartProcessHandler(self):
-        self.progress_bar_no_error()
         widgets_count = self.tabInfoToExtract.count()
         if widgets_count == 0:
             self.statusbar.showMessage("Clear list, impossible to process anything.")
@@ -344,6 +358,7 @@ class MainW(QMainWindow):
             self.worker = Worker(self)
             self.progressBarTotal.setValue(0)
             self.progressBarTotal.setMaximum(widgets_count)
+            self.progress_bar_no_error(f"%p% - {0}/{widgets_count}")
             self.worker.update.connect(self.update_task)
             self.worker.invoker.connect(self.method_handler)
             self.worker.start()
@@ -412,6 +427,10 @@ class MainW(QMainWindow):
         self.buttonStartProcess.setEnabled(True)
     
     def update_task(self, i, response, error_code):
+        self.textResponse.setText(response)
+        self.progressBarTotal.setValue(self.progressBarTotal.value() + 1)
+        current_value = self.progressBarTotal.value()
+        max_value = self.progressBarTotal.maximum()
         if i >= 0 and error_code >= 0:
             tab = self.tabInfoToExtract.widget(i)
             tab_name = self.tabInfoToExtract.tabText(i)
@@ -420,7 +439,7 @@ class MainW(QMainWindow):
             tab.textResponse.setText(response)
             self.statusbar.showMessage(f"\'{tab_name}\' has been processed.")
             self.logger.info(f"\'{tab_name}\' has been processed.")
-            self.progress_bar_no_error()
+            self.progress_bar_no_error(f"%p% - {current_value}/{max_value}")
         elif error_code == -1:
             print(f"The user has stopped a rest of the process.")
             self.statusbar.showMessage(f"The user has stopped a rest of the process.")
@@ -429,15 +448,13 @@ class MainW(QMainWindow):
         elif error_code == -403:
             self.statusbar.showMessage(response)
             self.logger.error(response)
-            self.progress_bar_has_error()
+            self.progress_bar_has_error(f"%p% - {current_value}/{max_value}")
         elif error_code < 0:
             tab_name = self.tabInfoToExtract.tabText(i)
             print(f"an error ocurred on the tab \'{tab_name}\'")
             self.statusbar.showMessage(f"an error ocurred on the tab \'{tab_name}\'")
             self.logger.error(f"an error ocurred on the tab \'{tab_name}: {response}\'")
-            self.progress_bar_has_error()
-        self.textResponse.setText(response)
-        self.progressBarTotal.setValue(self.progressBarTotal.value() + 1)
+            self.progress_bar_has_error(f"Error! %p% - {current_value}/{max_value}")
     
     def progress_bar_no_error(self, msg="%p%"):
         self.progressBarTotal.setFormat(msg)
